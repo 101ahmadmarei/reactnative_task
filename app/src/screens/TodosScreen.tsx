@@ -9,35 +9,71 @@ import {
   StyleSheet,
 } from 'react-native';
 import CheckBox from '@react-native-community/checkbox';
+import {NativeStackScreenProps} from '@react-navigation/native-stack';
+import {RootStackParamList} from '../App';
+import {useQuery, useMutation} from 'react-query';
+import {useFocusEffect} from '@react-navigation/native';
+import {fetchTodos, deleteTodo, addTodo, updateTodos} from '../lib/api';
+import Icon from 'react-native-vector-icons/FontAwesome';
+
+type Props = NativeStackScreenProps<RootStackParamList, 'Todos'>;
 
 type Todo = {
   id: number;
   title: string;
   done: boolean;
+  desc: string;
 };
 
 const initialTodo: Todo = {
   id: 0,
   title: '',
   done: false,
+  desc: '',
 };
 
-const TodoListScreen: React.FC = () => {
+const TodoListScreen: React.FC<Props> = ({navigation}) => {
   const [todos, setTodos] = useState<Todo[]>([]);
   const [newTodo, setNewTodo] = useState<Todo>(initialTodo);
   const [isDone, setIsDone] = useState<boolean>(false);
+  const todosQuery = useQuery<Todo[]>('todos', fetchTodos);
+
+  useFocusEffect(
+    React.useCallback(() => {
+      // Set the todos
+      setTodos(todosQuery.data!);
+
+      // Check if any of the todos are done
+      setIsDone(todosQuery.data!?.some(todo => todo.done));
+    }, [todosQuery.data]),
+  );
+
+  const deleteTodoMutation = useMutation(deleteTodo, {
+    onSuccess: () => {
+      // After the mutation is successful, trigger the refetch of all todos
+      todosQuery.refetch();
+    },
+  });
+  const addTodoMutation = useMutation(addTodo, {
+    onSuccess: () => {
+      todosQuery.refetch();
+    },
+  });
+  const updateTodoMutation = useMutation(updateTodos, {
+    onSuccess: () => {
+      todosQuery.refetch();
+    },
+  });
 
   const handleAddTodo = () => {
     if (newTodo.title.trim() === '') {
       return;
     }
-
-    setTodos(prevTodos => [...prevTodos, newTodo]);
     setNewTodo(initialTodo);
+    addTodoMutation.mutate(newTodo);
   };
 
   // This function handles the click event for the todo item checkbox.
-  // It updates the todo item's done field to the opposite of its current value.
   const handleToggleTodo = (id: number) => {
     const newTodos = todos.map(todo => {
       if (todo.id === id) {
@@ -46,6 +82,7 @@ const TodoListScreen: React.FC = () => {
 
       return todo;
     });
+    updateTodoMutation.mutate(newTodos.find(todo => todo.id === id)!);
 
     setTodos(newTodos);
     setIsDone(newTodos.some(todo => todo.done));
@@ -53,6 +90,11 @@ const TodoListScreen: React.FC = () => {
 
   const handleRemoveTodos = () => {
     const incompleteTodos = todos.filter(todo => !todo.done);
+    todos.forEach(todo => {
+      if (todo.done) {
+        deleteTodoMutation.mutate('' + todo.id);
+      }
+    });
     setTodos(incompleteTodos);
     setIsDone(false);
   };
@@ -66,7 +108,7 @@ const TodoListScreen: React.FC = () => {
           placeholder="Enter a new todo..."
           value={newTodo.title}
           onChangeText={text =>
-            setNewTodo({id: Math.random(), title: text, done: false})
+            setNewTodo({id: Math.random(), title: text, done: false, desc: ''})
           }
         />
 
@@ -88,12 +130,26 @@ const TodoListScreen: React.FC = () => {
         data={todos}
         renderItem={({item}) => (
           <View style={styles.todoItem}>
-            <CheckBox
-              value={item.done}
-              onValueChange={handleToggleTodo.bind(null, item.id)}
-              style={styles.checkbox}
-            />
-            <Text style={styles.label}>{item.title}</Text>
+            <View style={{flexDirection: 'row'}}>
+              <CheckBox
+                value={item.done}
+                onValueChange={handleToggleTodo.bind(null, item.id)}
+                style={styles.checkbox}
+                tintColors={{
+                  true: 'white', // Change the color for the true (checked) state
+                  false: 'white', // Change the color for the false (unchecked) state
+                }}
+              />
+              <Text style={styles.label}>{item.title}</Text>
+            </View>
+            <View>
+              <Icon.Button
+                name="edit"
+                onPress={() => navigation.navigate('update', item)}
+                backgroundColor="#3b5998"
+                solid
+              />
+            </View>
           </View>
         )}
         keyExtractor={(item, index) => index.toString()}
@@ -121,15 +177,17 @@ const styles = StyleSheet.create({
   },
   label: {
     margin: 8,
+    color: 'white',
   },
   todoItem: {
     fontSize: 18,
     marginBottom: 10,
     padding: 10,
-    backgroundColor: '#f9f9',
+    backgroundColor: '#3b5998',
     borderRadius: 5,
     elevation: 0.5,
     flexDirection: 'row',
+    justifyContent: 'space-between',
     // marginBottom: 20,
   },
   inputContainer: {
@@ -148,7 +206,7 @@ const styles = StyleSheet.create({
     marginVertical: 10,
   },
   addButton: {
-    backgroundColor: '#007AFF',
+    backgroundColor: '#3b5998',
     paddingVertical: 10,
     paddingHorizontal: 20,
     borderRadius: 5,
