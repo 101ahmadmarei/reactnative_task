@@ -6,8 +6,6 @@ import {NavigationContainer} from '@react-navigation/native';
 import {createNativeStackNavigator} from '@react-navigation/native-stack';
 import UpdateTodoScreen from './screens/UpdateTodoScreen';
 import {QueryClient, QueryClientProvider} from 'react-query';
-const Stack = createNativeStackNavigator();
-const queryClient = new QueryClient();
 
 export type RootStackParamList = {
   Todos: undefined;
@@ -18,6 +16,8 @@ export type RootStackParamList = {
     desc: string;
   };
 };
+const Stack = createNativeStackNavigator<RootStackParamList>();
+const queryClient = new QueryClient();
 
 function App(): JSX.Element {
   const isDarkMode = useColorScheme() === 'dark';

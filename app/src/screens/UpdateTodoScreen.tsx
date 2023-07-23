@@ -10,7 +10,13 @@ import {
 } from 'react-native';
 import {RootStackParamList} from '../App';
 import {updateTodos, deleteTodo} from '../lib/api';
-import {useMutation, useQuery, fetchTodos} from 'react-query';
+import {
+  useMutation,
+  useQuery,
+  fetchTodos,
+  QueryClient,
+  useQueryClient,
+} from 'react-query';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'update'>;
 type Todo = {
@@ -19,19 +25,23 @@ type Todo = {
   done: boolean;
   desc: string;
 };
+
 const TodoDetailsScreen: React.FC<Props> = ({route, navigation}) => {
+  const queryClient = useQueryClient();
   const {id, title, desc, done} = route.params;
   const [editedText, setEditedText] = useState(title);
   const [editedDescription, setEditedDescription] = useState(desc);
   const todosQuery = useQuery<Todo[]>('todos', fetchTodos);
   const deleteTodoMutation = useMutation(deleteTodo, {
     onSuccess: () => {
-      todosQuery.refetch();
+      queryClient.invalidateQueries('todos');
+      navigation.goBack();
     },
   });
   const updateTodoMutation = useMutation(updateTodos, {
     onSuccess: () => {
-      todosQuery.refetch();
+      queryClient.invalidateQueries('todos');
+      navigation.goBack();
     },
   });
 
@@ -44,12 +54,10 @@ const TodoDetailsScreen: React.FC<Props> = ({route, navigation}) => {
       done: done,
     };
     updateTodoMutation.mutate(updatedTodo);
-    navigation.goBack();
   };
 
   const handleDeleteTodo = () => {
     deleteTodoMutation.mutate('' + id);
-    navigation.goBack();
   };
 
   return (

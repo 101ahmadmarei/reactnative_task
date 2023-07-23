@@ -7,11 +7,12 @@ import {
   TouchableOpacity,
   TextInput,
   StyleSheet,
+  ActivityIndicator,
 } from 'react-native';
 import CheckBox from '@react-native-community/checkbox';
 import {NativeStackScreenProps} from '@react-navigation/native-stack';
 import {RootStackParamList} from '../App';
-import {useQuery, useMutation} from 'react-query';
+import {useQuery, useMutation, useQueryClient} from 'react-query';
 import {useFocusEffect} from '@react-navigation/native';
 import {fetchTodos, deleteTodo, addTodo, updateTodos} from '../lib/api';
 import Icon from 'react-native-vector-icons/FontAwesome';
@@ -33,35 +34,33 @@ const initialTodo: Todo = {
 };
 
 const TodoListScreen: React.FC<Props> = ({navigation}) => {
-  const [todos, setTodos] = useState<Todo[]>([]);
+  const queryClient = useQueryClient();
   const [newTodo, setNewTodo] = useState<Todo>(initialTodo);
   const [isDone, setIsDone] = useState<boolean>(false);
-  const todosQuery = useQuery<Todo[]>('todos', fetchTodos);
+  const {data: todos, status} = useQuery<Todo[]>('todos', fetchTodos);
 
   useFocusEffect(
     React.useCallback(() => {
-      // Set the todos
-      setTodos(todosQuery.data!);
-
       // Check if any of the todos are done
-      setIsDone(todosQuery.data!?.some(todo => todo.done));
-    }, [todosQuery.data]),
+      setIsDone(todos!?.some(todo => todo.done));
+    }, [todos]),
   );
+
+  const addTodoMutation = useMutation(addTodo, {
+    onSuccess: () => {
+      queryClient.invalidateQueries('todos');
+    },
+  });
+
+  const updateTodoMutation = useMutation(updateTodos, {
+    onSuccess: () => {
+      queryClient.invalidateQueries('todos');
+    },
+  });
 
   const deleteTodoMutation = useMutation(deleteTodo, {
     onSuccess: () => {
-      // After the mutation is successful, trigger the refetch of all todos
-      todosQuery.refetch();
-    },
-  });
-  const addTodoMutation = useMutation(addTodo, {
-    onSuccess: () => {
-      todosQuery.refetch();
-    },
-  });
-  const updateTodoMutation = useMutation(updateTodos, {
-    onSuccess: () => {
-      todosQuery.refetch();
+      queryClient.invalidateQueries('todos');
     },
   });
 
@@ -75,7 +74,7 @@ const TodoListScreen: React.FC<Props> = ({navigation}) => {
 
   // This function handles the click event for the todo item checkbox.
   const handleToggleTodo = (id: number) => {
-    const newTodos = todos.map(todo => {
+    const newTodos = todos!.map(todo => {
       if (todo.id === id) {
         return {...todo, done: !todo.done};
       }
@@ -83,21 +82,56 @@ const TodoListScreen: React.FC<Props> = ({navigation}) => {
       return todo;
     });
     updateTodoMutation.mutate(newTodos.find(todo => todo.id === id)!);
-
-    setTodos(newTodos);
-    setIsDone(newTodos.some(todo => todo.done));
   };
 
   const handleRemoveTodos = () => {
-    const incompleteTodos = todos.filter(todo => !todo.done);
-    todos.forEach(todo => {
+    // const incompleteTodos = todos!.filter(todo => !todo.done);
+    todos!.forEach(todo => {
       if (todo.done) {
         deleteTodoMutation.mutate('' + todo.id);
       }
     });
-    setTodos(incompleteTodos);
-    setIsDone(false);
   };
+
+  let situation = <Text>No todos found</Text>;
+
+  if (status === 'loading') {
+    situation = <ActivityIndicator size="large" color="#00ff00" />;
+  } else if (status === 'error') {
+    situation = <Text>Error fetching data</Text>;
+  } else if (status === 'success' && todos?.length === 0) {
+    situation = <Text>No todos found</Text>;
+  } else if (status === 'success' && todos?.length !== 0) {
+    situation = (
+      <FlatList
+        data={todos}
+        renderItem={({item}) => (
+          <View style={styles.todoItem}>
+            <View style={{flexDirection: 'row'}}>
+              <CheckBox
+                value={item.done}
+                onValueChange={handleToggleTodo.bind(null, item.id)}
+                style={styles.checkbox}
+                tintColors={{
+                  true: 'white', // Change the color for the true (checked) state
+                  false: 'white', // Change the color for the false (unchecked) state
+                }}
+              />
+              <Text style={styles.label}>{item.title}</Text>
+            </View>
+            <View>
+              <Icon.Button
+                name="edit"
+                onPress={() => navigation.navigate('update', item)}
+                backgroundColor="#3b5998"
+              />
+            </View>
+          </View>
+        )}
+        keyExtractor={(item, index) => index.toString()}
+      />
+    );
+  }
 
   return (
     <View style={styles.container}>
@@ -126,34 +160,7 @@ const TodoListScreen: React.FC<Props> = ({navigation}) => {
         disabled={!isDone}>
         <Text style={styles.addButtonText}>Remove</Text>
       </TouchableOpacity>
-      <FlatList
-        data={todos}
-        renderItem={({item}) => (
-          <View style={styles.todoItem}>
-            <View style={{flexDirection: 'row'}}>
-              <CheckBox
-                value={item.done}
-                onValueChange={handleToggleTodo.bind(null, item.id)}
-                style={styles.checkbox}
-                tintColors={{
-                  true: 'white', // Change the color for the true (checked) state
-                  false: 'white', // Change the color for the false (unchecked) state
-                }}
-              />
-              <Text style={styles.label}>{item.title}</Text>
-            </View>
-            <View>
-              <Icon.Button
-                name="edit"
-                onPress={() => navigation.navigate('update', item)}
-                backgroundColor="#3b5998"
-                solid
-              />
-            </View>
-          </View>
-        )}
-        keyExtractor={(item, index) => index.toString()}
-      />
+      {situation}
     </View>
   );
 };
